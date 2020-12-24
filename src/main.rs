@@ -5,10 +5,13 @@ use std::io::{self, prelude::*};
 use std::str;
 
 #[allow(unused_imports)]
-use image::{GenericImage, GenericImageView, ImageBuffer, Pixel, Rgb, Rgba};
+use image::{GenericImage, DynamicImage, GenericImageView, ImageBuffer, Pixel, Rgb, Rgba};
 
 #[allow(unused_imports)]
 use std::env;
+
+
+// use crate::color::{self, IntoColor};
 
 // esteganografia
 fn main() -> io::Result<()> {
@@ -21,12 +24,14 @@ fn main() -> io::Result<()> {
         &args[2]
     ).unwrap();
 
-    println!("{}", nom_img);
+    // println!("{}", nom_img);
 
     // read_f_in_image(
     //     &nom_img,
     //     "esto_es_prueba.txt"
     // )
+
+    print_image_pixels(&nom_img)
 
     // let aa : Vec<u32> = (0..50_u32)
     //     .map (|x| x + 1)
@@ -34,7 +39,7 @@ fn main() -> io::Result<()> {
     //     ;
     // println!("{:?}", aa);
 
-    Ok(())
+    // Ok(())
 }
 
 #[allow(dead_code)]
@@ -43,13 +48,18 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
 
     let chunk_size = 0x4000;
 
-    let mut img: image::DynamicImage = match image::open(img_path) {
-        Ok(f) => f,
-        Err(err) => {
-            eprintln!("error: {}", err);
-            std::process::exit(1);
+    let mut img = DynamicImage::ImageRgba8(
+        match image::open(img_path) {
+            Ok(f) => f.into_rgba8(),
+            Err(err) => {
+                eprintln!("error: {}", err);
+                std::process::exit(1);
+            }
         }
-    };
+    );
+
+    // let rgba = open("path/to/some.png").unwrap().into_rgba();
+    // let gray = DynamicImage::ImageRgba8(rgba).into_luma();
 
     let mut fpos_x : u32 = 0;
     let mut fpos_y : u32 = 0;
@@ -63,18 +73,28 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
         // println!("{:?}", chunk);
 
         // para cada byte dentro de chunk
-        for a in chunk {
+        for byte in chunk {
 
-            println!("{:?} \t {}:{}", a, fpos_x, fpos_y );
+            println!("{:?} \t {}:{}", byte, fpos_x, fpos_y );
 
-            let pixel = img.get_pixel_mut(fpos_x , fpos_y);
+            let mut pixel = img.get_pixel(fpos_x , fpos_y);
 
             println!("{:?}", pixel);
 
             // let image::Rgb(data) = *pixel;
 
-            *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], a]);
-            // img.put_pixel(fpos_x,fpos_y,pixel);
+            // *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], byte]);
+
+            // let image::Rgba(data) = *pixel;
+            // *pixel = image::Rgba([data[0], data[1], data[2], data[3]]);
+
+            pixel[3] = byte;
+
+            img.put_pixel(
+                fpos_x,fpos_y,
+                // Rgba<u8>::from([pixel[0], pixel[1],pixel[2], byte])
+                pixel
+            );
 
             println!("{:?}", pixel);
 
@@ -93,10 +113,29 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
         if n < chunk_size { break; }
     }
 
+    println!("{}:{}", fpos_x, fpos_y);
+
+    for y in 0..fpos_y + 1 {
+        for x in 0..fpos_x + 1 {
+            let pixel = img.get_pixel(x , y);
+
+            println!("{:?}", pixel);
+        }
+    }
+    println!("------------------");
+    for y in 0..1 { // img.height() {
+        for x in 0..50 { // img.width() {
+            let pixel = img.get_pixel(x , y);
+            println!("{:?}", pixel);
+        }
+    }
+
     let nombre = format!("copia_esteg_{}", img_path);
 
+    let res = img.save(&nombre);
+
     Ok(
-        match img.save(&nombre) {
+        match res {
             Ok(()) => nombre,
             Err(err) => {
                 eprintln!("error: {}", err);
@@ -122,6 +161,14 @@ fn read_f_in_image(img_path: &str, file_path: &str) -> io::Result<()> {
         }
     };
 
+    println!(" tam imagen {}:{}", img.width(), img.height());
+
+    // for y in 0..fpos_y + 1 {
+    //     for x in 0..fpos_x + 1 {
+    //         let pixel = img.get_pixel(x , y);
+    //         println!("{:?}", pixel);
+    //     }
+    // }
     for y in 0..img.height() {
         let aa : Vec<_> = (0..img.width())
             .map (
@@ -199,4 +246,25 @@ fn read_image(img_path: &str)  {
     }
 
     img.save(format!("copia_{}", img_path)).unwrap();
+}
+
+#[allow(dead_code)]
+fn print_image_pixels(img_path: &str) -> io::Result<()> {
+    println!("pixeles de imagen : {}", img_path);
+
+    let img: image::DynamicImage = match image::open(img_path) {
+        Ok(f) => f,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    for y in 0..1 { // img.height() {
+        for x in 0..50 { // img.width() {
+            let pixel = img.get_pixel(x , y);
+            println!("{:?}", pixel);
+        }
+    }
+    Ok(())
 }
