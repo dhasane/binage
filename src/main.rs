@@ -41,6 +41,16 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
+fn modify_byte(byte: u8, pos: u8, max:u8, bit: u8) {
+
+    // TODO: poner en el ultimo bit
+    // seria chevere que tambien sirva para otras posiciones y no solo la ultima
+    // pixel[pixel_pos] |= bit;
+    algo asi como
+        byte[8-max + pos] = bit
+
+}
+
 #[allow(dead_code)]
 fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
     let mut file: std::fs::File = std::fs::File::open(file_path)?;
@@ -58,9 +68,19 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
     // let rgba = open("path/to/some.png").unwrap().into_rgba();
     // let gray = DynamicImage::ImageRgba8(rgba).into_luma();
 
-    let mut fpos_x: u32 = 0;
-    let mut fpos_y: u32 = 0;
+    // posiciones en x y y de la imagen
+    let mut pos_x: u32 = 0;
+    let mut pos_y: u32 = 0;
+    // posicion dentro del pixel -> {0..3}
+    let mut pixel_pos = 0;
 
+    // cantidad de bits para ificar en el byte
+    let pixel_internal_max = 2;
+    // posicion que se esta modificando del byte
+    let mut pixel_internal_pos = 0;
+
+
+    // mientras haya elementos para leer, se meten en un chunk
     loop {
         let mut chunk = Vec::with_capacity(chunk_size);
         let n = std::io::Read::by_ref(&mut file)
@@ -69,45 +89,46 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
         if n == 0 {
             break;
         }
-        // println!("{:?}", chunk);
 
-        // para cada byte dentro de chunk
+        // para cada byte dentro del chunk
         for byte in chunk {
-            println!("{:?} \t {}:{}", byte, fpos_x, fpos_y);
+            println!("{:?} \t {}:{}", byte, pos_x, pos_y);
 
-            let mut pixel = img.get_pixel(fpos_x, fpos_y);
-
-            println!("{:?}", pixel);
-
-            // let image::Rgb(data) = *pixel;
-
-            // *pixel = image::Rgba([pixel[0], pixel[1], pixel[2], byte]);
-
-            // let image::Rgba(data) = *pixel;
-            // *pixel = image::Rgba([data[0], data[1], data[2], data[3]]);
-
-            println!("{:?}", byte.to_be_bytes());
+            // para cada bit dentro del byte
             for bit in format!("{:#b}", byte)[2..].chars() {
                 println!("{}", bit);
+
+                let mut pixel = img.get_pixel(pos_x, pos_y);
+                println!("{:?}", pixel);
+
+                modify_byte(
+                    pixel[pixel_pos],
+                    pixel_internal_pos,
+                    pixel_internal_max,
+                    bit as u8
+                );
+
+                pixel_pos += 1;
+                if pixel_pos > 3 { pixel_pos = 0 }
+
+                img.put_pixel(
+                    pos_x, pos_y, // Rgba<u8>::from([pixel[0], pixel[1],pixel[2], byte])
+                    pixel,
+                );
+
+                println!("{:?}", pixel);
+
+                if pos_x > img.width() {
+                    pos_x = 0;
+                    pos_y += 1;
+                } else {
+                    pos_x += 1;
+                }
             }
 
             // pixel[0] |= byte;
             // pixel[1] |= byte;
             // pixel[2] |= byte;
-
-            // img.put_pixel(
-            //     fpos_x, fpos_y, // Rgba<u8>::from([pixel[0], pixel[1],pixel[2], byte])
-            //     pixel,
-            // );
-
-            // println!("{:?}", pixel);
-
-            // if fpos_x > img.width() {
-            //     fpos_x = 0;
-            //     fpos_y += 1;
-            // } else {
-            //     fpos_x += 1;
-            // }
 
             println!();
         }
@@ -119,10 +140,10 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
         }
     }
 
-    println!("{}:{}", fpos_x, fpos_y);
+    println!("{}:{}", pos_x, pos_y);
 
-    // for y in 0..fpos_y + 1 {
-    //     for x in 0..fpos_x + 1 {
+    // for y in 0..pos_y + 1 {
+    //     for x in 0..pos_x + 1 {
     //         let pixel = img.get_pixel(x, y);
 
     //         println!("{:?}", pixel);
