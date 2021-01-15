@@ -1,5 +1,5 @@
 #[allow(unused_imports)]
-use std::io::{self, prelude::*};
+use std::io::{self, prelude::*, BufReader};
 
 #[allow(unused_imports)]
 use std::str;
@@ -10,25 +10,30 @@ use image::{DynamicImage, GenericImage, GenericImageView, ImageBuffer, Pixel, Rg
 #[allow(unused_imports)]
 use std::env;
 
+use std::fs::File;
+
 // use crate::color::{self, IntoColor};
 
 // esteganografia
 fn main() -> io::Result<()> {
-    // let args: Vec<String> = env::args().collect();
+    // TODO: descomentar esto
+    let args: Vec<String> = env::args().collect();
+    let nom_img = match store_f_in_image(&args[1], &args[2]) {
+        Ok(a) => a,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            std::process::exit(1);
+        }
+    };
 
-    println!("{}", 161 | 0);
-
-    // let nom_img = match store_f_in_image(&args[1], &args[2]) {
-    //     Ok(a) => a,
-    //     Err(err) => {
-    //         eprintln!("error: {}", err);
-    //         std::process::exit(1);
-    //     }
-    // };
+    // let mut byte = 10;
+    // println!("byte original  0b{:08b}", byte);
+    // byte = modify_byte(byte, 0, '0');
+    // println!("byte resultado 0b{:08b}", byte);
 
     // println!("{}", nom_img);
 
-    // read_f_in_image(&nom_img, "esto_es_prueba.txt")
+    read_f_in_image(&nom_img, "esto_es_prueba.txt");
 
     // print_image_pixels(&nom_img)
 
@@ -41,22 +46,21 @@ fn main() -> io::Result<()> {
     Ok(())
 }
 
-fn modify_byte(byte: u8, pos: u8, max:u8, bit: u8) {
-
-    // TODO: poner en el ultimo bit
-    // seria chevere que tambien sirva para otras posiciones y no solo la ultima
-    // pixel[pixel_pos] |= bit;
-    algo asi como
-        byte[8-max + pos] = bit
-
+fn modify_byte(mut byte: u8, pos: usize, bit: char) -> u8 {
+    let byte_mask: u8 = 2_u8.pow(pos as u32);
+    let change = get_bit(byte, pos);
+    // println!("{:b}", byte_mask);
+    if change != bit {
+        byte ^= byte_mask; // Toggle bit
+    }
+    byte
 }
 
-#[allow(dead_code)]
+fn get_bit(byte: u8, pos: usize) -> char {
+    format!("{:b}", byte).chars().rev().nth(pos).unwrap()
+}
+
 fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
-    let mut file: std::fs::File = std::fs::File::open(file_path)?;
-
-    let chunk_size = 0x4000;
-
     let mut img = DynamicImage::ImageRgba8(match image::open(img_path) {
         Ok(f) => f.into_rgba8(),
         Err(err) => {
@@ -65,9 +69,6 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
         }
     });
 
-    // let rgba = open("path/to/some.png").unwrap().into_rgba();
-    // let gray = DynamicImage::ImageRgba8(rgba).into_luma();
-
     // posiciones en x y y de la imagen
     let mut pos_x: u32 = 0;
     let mut pos_y: u32 = 0;
@@ -75,49 +76,41 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
     let mut pixel_pos = 0;
 
     // cantidad de bits para ificar en el byte
-    let pixel_internal_max = 2;
+    // let pixel_internal_max = 2;
     // posicion que se esta modificando del byte
-    let mut pixel_internal_pos = 0;
+    // TODO: pensar en una forma para que se puedan recorrer varios bits de un byte
+    // probablemente sea otro ciclo, pero me gustaria pensar en una forma mas elegante
+    let pixel_internal_pos = 0;
 
+    let file = File::open(file_path)?;
+    let reader = BufReader::new(file);
 
-    // mientras haya elementos para leer, se meten en un chunk
-    loop {
-        let mut chunk = Vec::with_capacity(chunk_size);
-        let n = std::io::Read::by_ref(&mut file)
-            .take(chunk_size as u64)
-            .read_to_end(&mut chunk)?;
-        if n == 0 {
-            break;
-        }
+    for byte in reader.bytes() {
+        let val = byte?;
+        println!("{:b} -> {}", val, val);
+        // para cada bit dentro del byte
+        for bit in format!("{:b}", val).chars() {
+            print!("{} -> ", bit);
+            println!("{}:{}:{}", pos_x, pos_y, pixel_pos);
+            // conseguir pixel
+            let mut pixel = img.get_pixel(pos_x, pos_y);
+            print!("{:?} -> ", pixel);
 
-        // para cada byte dentro del chunk
-        for byte in chunk {
-            println!("{:?} \t {}:{}", byte, pos_x, pos_y);
+            // modificar pixel
+            print!("({:?} | ", pixel[pixel_pos]);
+            pixel[pixel_pos] = modify_byte(pixel[pixel_pos], pixel_internal_pos, bit);
+            print!("{:?}) -> ", pixel[pixel_pos]);
 
-            // para cada bit dentro del byte
-            for bit in format!("{:#b}", byte)[2..].chars() {
-                println!("{}", bit);
+            // guardar pixel
+            img.put_pixel(
+                pos_x, pos_y, // Rgba<u8>::from([pixel[0], pixel[1],pixel[2], byte])
+                pixel,
+            );
 
-                let mut pixel = img.get_pixel(pos_x, pos_y);
-                println!("{:?}", pixel);
-
-                modify_byte(
-                    pixel[pixel_pos],
-                    pixel_internal_pos,
-                    pixel_internal_max,
-                    bit as u8
-                );
-
-                pixel_pos += 1;
-                if pixel_pos > 3 { pixel_pos = 0 }
-
-                img.put_pixel(
-                    pos_x, pos_y, // Rgba<u8>::from([pixel[0], pixel[1],pixel[2], byte])
-                    pixel,
-                );
-
-                println!("{:?}", pixel);
-
+            // mover
+            pixel_pos += 1;
+            if pixel_pos > 3 {
+                pixel_pos = 0;
                 if pos_x > img.width() {
                     pos_x = 0;
                     pos_y += 1;
@@ -126,59 +119,34 @@ fn store_f_in_image(img_path: &str, file_path: &str) -> io::Result<String> {
                 }
             }
 
-            // pixel[0] |= byte;
-            // pixel[1] |= byte;
-            // pixel[2] |= byte;
-
-            println!();
-        }
-
-        println!("------------------");
-
-        if n < chunk_size {
-            break;
+            println!("{:?}", pixel);
         }
     }
 
-    println!("{}:{}", pos_x, pos_y);
-
-    // for y in 0..pos_y + 1 {
-    //     for x in 0..pos_x + 1 {
-    //         let pixel = img.get_pixel(x, y);
-
-    //         println!("{:?}", pixel);
-    //     }
-    // }
-    // println!("------------------");
-    // for y in 0..1 {
-    //     // img.height() {
-    //     for x in 0..50 {
-    //         // img.width() {
-    //         let pixel = img.get_pixel(x, y);
-    //         println!("{:?}", pixel);
-    //     }
-    // }
-
     let nombre = format!("copia_esteg_{}", img_path);
-
-    // let res = img.save(&nombre);
-    Ok("hola".to_string())
-
-    // Ok(match res {
-    //     Ok(()) => nombre,
-    //     Err(err) => {
-    //         eprintln!("error: {}", err);
-    //         std::process::exit(1);
-    //     }
-    // })
+    let res = img.save(&nombre);
+    Ok(match res {
+        Ok(()) => nombre,
+        Err(err) => {
+            eprintln!("error: {}", err);
+            std::process::exit(1);
+        }
+    })
 }
+
+// pub fn decode_binary(s: &str) -> Result<Vec<u8>, ParseIntError> {
+//     (0..s.len())
+//         .step_by(9)
+//         .map(|i| u8::from_str_radix(&s[i..i + 8], 2))
+//         .collect()
+// }
 
 #[allow(dead_code)]
 fn read_f_in_image(img_path: &str, file_path: &str) -> io::Result<()> {
     println!("leyendo {}", img_path);
     println!("creando {}", file_path);
 
-    let mut file: std::fs::File = std::fs::File::create(file_path)?;
+    let mut file: std::fs::File = File::create(file_path)?;
 
     let img: image::DynamicImage = match image::open(img_path) {
         Ok(f) => f,
@@ -191,27 +159,41 @@ fn read_f_in_image(img_path: &str, file_path: &str) -> io::Result<()> {
     println!(" tam imagen {}:{}", img.width(), img.height());
 
     for y in 0..img.height() {
-        let aa: Vec<_> = (0..img.width())
-            .map(|x| {
-                println!("{}:{}  -> {:?}", x, y, img.get_pixel(x, y));
-                img.get_pixel(x, y)[3]
-            })
-            .collect();
+        let mut cad: String = "".to_string();
 
-        println!("{:?}", aa);
-
-        let pal = str::from_utf8(&aa).unwrap();
-        println!("{}", pal);
+        for a in (0..img.width()).map(|x| {
+            // println!("{}:{}  -> {:?}", x, y, img.get_pixel(x, y));
+            let mut str: String = "".to_string();
+            str.push(get_bit(img.get_pixel(x, y)[0], 0));
+            str.push(get_bit(img.get_pixel(x, y)[1], 0));
+            str.push(get_bit(img.get_pixel(x, y)[3], 0));
+            str
+        }) {
+            // ir sumando los bits en una cadena y al haber por lo menos  8,
+            // se convierten a caracter y se quitan los caracteres usados
+            cad.push_str(&a);
+            if cad.chars().count() >= 8 {
+                let car: char = u8::from_str_radix(&cad[0..8], 2).unwrap() as char;
+                // println!("{} -> {}", cad[0..8].to_string(), car);
+                write!(file, "{}", car).unwrap();
+                cad = cad[8..].to_string();
+            }
+        }
 
         // println!("{:?}", aa);
 
-        match file.write(&aa) {
-            Ok(f) => f,
-            Err(err) => {
-                eprintln!("error: {}", err);
-                std::process::exit(1);
-            }
-        };
+        // let pal = str::from_utf8(&aa).unwrap();
+        // println!("{}", pal);
+
+        // // println!("{:?}", aa);
+
+        // match file.write(&aa) {
+        //     Ok(f) => f,
+        //     Err(err) => {
+        //         eprintln!("error: {}", err);
+        //         std::process::exit(1);
+        //     }
+        // };
     }
 
     Ok(())
