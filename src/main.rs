@@ -34,7 +34,7 @@ fn main() -> io::Result<()> {
     // println!("{}", nom_img);
 
     // let _a = hmmmmmmm(&nom_img, "esto_es_prueba.txt");
-    let _nom_img = match hmmmmmmm(&args[1], &args[2]) {
+    let _nom_img = match store(&args[1], &args[2]) {
         Ok(a) => a,
         Err(err) => {
             eprintln!("error: {}", err);
@@ -233,7 +233,7 @@ fn bin_to_byte(cad: &str) -> usize {
 }
 
 #[allow(dead_code)]
-fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
+fn store(img_path: &str, file_path: &str) -> io::Result<String> {
     let mut img = DynamicImage::ImageRgba8(match image::open(img_path) {
         Ok(f) => f.into_rgba8(),
         Err(err) => {
@@ -249,6 +249,10 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
     let metadata = std::fs::metadata(file_path)?;
     let meta_length: usize = metadata.len() as usize;
 
+    // se pone un bit en 1 al final de cada byte en caso de que no sea
+    // el ultimo, haciendo que se puedan guardar tantos bytes como sea
+    // necesario, a pesar de que aumentaria el uso de memoria en la
+    // imagen
     let file_bits: Vec<char> = bytes
         .flat_map(|s| {
             let byte_value: u8 = match s {
@@ -258,7 +262,9 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
                     std::process::exit(1);
                 }
             };
-            byte_to_bin(byte_value as usize).chars().collect::<Vec<_>>()
+            let mut ret = byte_to_bin(byte_value as usize).chars().collect::<Vec<_>>();
+            ret.extend(vec!['1']);
+            ret
         })
         .collect();
 
@@ -275,6 +281,8 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
     bits.extend(file_bits);
 
     let length: usize = bits.len();
+    let _got = std::mem::replace(&mut bits[length - 1], '0');
+
     let max_width: usize = img.width() as usize;
 
     println!("{:?}", bits);
@@ -308,6 +316,7 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
     })
 }
 
+#[allow(dead_code)]
 fn ham(img_path: &str, file_path: &str) -> io::Result<()> {
     println!("leyendo {}", img_path);
     println!("creando {}", file_path);
