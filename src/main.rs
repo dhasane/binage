@@ -34,14 +34,14 @@ fn main() -> io::Result<()> {
     // println!("{}", nom_img);
 
     // let _a = hmmmmmmm(&nom_img, "esto_es_prueba.txt");
-    let nom_img = match hmmmmmmm(&args[1], &args[2]) {
+    let _nom_img = match hmmmmmmm(&args[1], &args[2]) {
         Ok(a) => a,
         Err(err) => {
             eprintln!("error: {}", err);
             std::process::exit(1);
         }
     };
-    let _a = ham(&nom_img, "pruebaaaa.txt");
+    // let _a = ham(&nom_img, "pruebaaaa.txt");
     // let _a = read_f_in_image(&nom_img, "pruebaaaa.txt");
 
     // print_image_pixels(&nom_img)
@@ -63,7 +63,6 @@ fn modify_byte(mut byte: u8, pos: u8, bit: char) -> u8 {
     if change != bit {
         byte ^= byte_mask; // Toggle bit
     }
-    println!("{}", byte);
     byte
 }
 
@@ -215,8 +214,22 @@ fn print_image_pixels(img_path: &str) -> io::Result<()> {
 }
 
 fn byte_to_bin(cad: usize) -> String {
-    let ret = format!("{:b}", cad);
+    // let ret = format!("{:#08}", cad);
+    let ret = format!("{:010b}", cad)[2..].to_string();
+    // println!("{} -> {} ({})", cad, ret, bin_to_byte(&ret));
     ret
+}
+
+fn bin_to_byte(cad: &str) -> usize {
+    let mut val: usize = 0;
+    let mut pos: u32 = 0;
+    for ch in cad.chars().rev() {
+        if ch == '1' {
+            val += 2_usize.pow(pos);
+        }
+        pos += 1;
+    }
+    val
 }
 
 #[allow(dead_code)]
@@ -231,12 +244,40 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
 
     let file = File::open(file_path)?;
     let reader = BufReader::new(file);
-    let _bytes = reader.bytes();
+    let bytes = reader.bytes();
 
     let metadata = std::fs::metadata(file_path)?;
-    let length = metadata.len();
+    let meta_length: usize = metadata.len() as usize;
 
-    let max_width: u64 = img.width() as u64;
+    let file_bits: Vec<char> = bytes
+        .flat_map(|s| {
+            let byte_value: u8 = match s {
+                Ok(a) => a,
+                Err(err) => {
+                    eprintln!("error: {}", err);
+                    std::process::exit(1);
+                }
+            };
+            byte_to_bin(byte_value as usize).chars().collect::<Vec<_>>()
+        })
+        .collect();
+
+    // agregar la longitud del archivo
+    let mut bits: Vec<char> = byte_to_bin(meta_length).chars().collect::<Vec<char>>();
+
+    // agregar separador // se va a dejar como que los primeros 8 son
+    // el tam y el resto ya es informacion, que hace que el archivo no
+    // sea tan grande, pero de momento funciona bien para probar el
+    // resto
+    // bits.extend(byte_to_bin(':' as usize).chars().collect::<Vec<char>>());
+
+    // agregar los bits del archivo
+    bits.extend(file_bits);
+
+    let length: usize = bits.len();
+    let max_width: usize = img.width() as usize;
+
+    println!("{:?}", bits);
 
     println!("inicio---");
     for position in (0..length).step_by(3) {
@@ -245,12 +286,11 @@ fn hmmmmmmm(img_path: &str, file_path: &str) -> io::Result<String> {
 
         let mut pixel = img.get_pixel(x, y);
         for channel in 0..3_usize {
-            // TODO: leer los bits de una posicion especifica
-            // let bit = bytes.by_ref((position + channel as u64));
-            // let bit = bytes.slice();
-            let bit = '1';
-            pixel[channel] = modify_byte(pixel[channel], 0, bit);
-            println!("{}", byte_to_bin(pixel[channel] as usize));
+            let local = position + channel;
+            if local < bits.len() {
+                let bit = bits[local];
+                pixel[channel] = modify_byte(pixel[channel], 0, bit);
+            }
         }
         img.put_pixel(x, y, pixel);
     }
@@ -322,8 +362,14 @@ fn ham(img_path: &str, file_path: &str) -> io::Result<()> {
 
     println!("cadenas:");
     for cad in (0..cadena_completa.len()).step_by(8) {
-        let subcadena = &cadena_completa[cad..cad + 8];
-        println!("{}", subcadena);
+        let tentative = cad + 8;
+        let top = if tentative > cadena_completa.len() {
+            cadena_completa.len()
+        } else {
+            tentative
+        };
+        let subcadena = &cadena_completa[cad..top];
+        println!("{} -> ", subcadena);
     }
 
     // for res in resultado {
