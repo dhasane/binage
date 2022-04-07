@@ -4,6 +4,7 @@ use std::fs::File;
 use std::io::{self, prelude::*, BufReader};
 use std::str;
 
+/// bit goes into byte at it's position pos
 fn modify_byte(mut byte: u8, pos: u8, bit: char) -> u8 {
     let base: u8 = 2;
     let byte_mask: u8 = base.pow(pos as u32);
@@ -83,7 +84,7 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
     // el ultimo, haciendo que se puedan guardar tantos bytes como sea
     // necesario, a pesar de que aumentaria el uso de memoria en la
     // imagen
-    let file_bits: Vec<char> = bytes
+    let mut bits = bytes
         .flat_map(|s| {
             let byte_value: u8 = match s {
                 Ok(a) => a,
@@ -92,34 +93,44 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
                     std::process::exit(1);
                 }
             };
-            let mut ret = byte_to_bin(byte_value as u32).chars().collect::<Vec<_>>();
-            ret.extend(vec!['1']);
-            println!("{:?} -> {}", ret, byte_value);
-            ret
+            let mut ret = byte_to_bin(byte_value as u32);
+            ret.push('1');
+            // println!("{:?} -> {}", ret, byte_value);
+            ret.chars().collect::<Vec<_>>()
         })
-        .collect();
+        .peekable();
 
-    // agregar la longitud del archivo
-    let mut bits: Vec<char> = file_bits;
+    let img_width = img.width();
 
-    let length: usize = bits.len();
-    bits[length - 1] = '0';
+    let pos = (0..)
+        .flat_map(|n| {
+            let x: u32 = n / img_width;
+            let y: u32 = n % img_width;
+            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
+        })
+        .into_iter();
 
-    let max_width: usize = img.width() as usize;
-
-    for position in (0..length).step_by(3) {
-        let x = (position / max_width) as u32;
-        let y = (position % max_width) as u32;
-
-        let mut pixel = img.get_pixel(x, y);
-        for channel in 0..3_usize {
-            let local = position + channel;
-            if local < bits.len() {
-                let bit = bits[local];
-                pixel[channel] = modify_byte(pixel[channel], 0, bit);
+    for (x, y, n) in pos {
+        let temp = bits.next();
+        let end = bits.peek().is_none();
+        let bit = if end {
+            '0' // ignore last and add a 0
+        } else {
+            match temp {
+                Some(bit) => bit,
+                None => '0',
             }
+        };
+        // println!("{:?}, end:{}", temp, end);
+        // println!("{},{},{} => {}", x, y, n, bit);
+        let mut pixel = img.get_pixel(x, y);
+        pixel[n] = modify_byte(pixel[n], 0, bit);
+        img.put_pixel(x, y, pixel); // maybe this could be more eficient, so as to not store it after every small change
+
+        if end {
+            println!("saliendo");
+            break;
         }
-        img.put_pixel(x, y, pixel);
     }
 
     let nombre = output_file.to_string();
@@ -150,35 +161,33 @@ pub fn load(img_path: &str, file_path: &str) -> io::Result<()> {
 
     println!(" tam imagen {}:{}", img.width(), img.height());
 
-    let max_width: u64 = img.width() as u64;
+    let img_width: u32 = img.width();
 
-    // itera sobre cada uno de los pixeles y saca los valores de cada canal
-    let iterator = ((0..).step_by(3))
-        .map(|position| {
-            let x = (position / max_width) as u32;
-            let y = (position % max_width) as u32;
-            let pixel = img.get_pixel(x, y);
-            let mut str: String = "".to_string();
-            for channel in 0..3_usize {
-                str.push(get_bit(pixel[channel], 0));
-            }
-            str.chars().collect::<Vec<char>>()
+    let pos = (0..)
+        .flat_map(|n| {
+            let x: u32 = n / img_width;
+            let y: u32 = n % img_width;
+            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
         })
-        .enumerate();
+        .into_iter();
 
-    let mut byte: String = "".to_string();
-    for it in iterator {
-        let restr: String = it.1.into_iter().collect();
-        byte.push_str(&restr);
-        if it.0 % 3 == 2 {
-            let flag = byte.pop(); // el ultimo elemento no es parte del byte
-            let byte_value = char::from_u32(bin_to_byte(&byte)).unwrap();
-            println!("{:?} -> {}", byte, byte_value);
-            write!(file, "{}", byte_value).unwrap();
-            if flag == Some('0') {
-                break;
-            }
-            byte = "".to_string();
+    let mut iterator = pos.flat_map(|(x, y, n)| {
+        let pixel = img.get_pixel(x, y);
+        let mut str: String = "".to_string();
+        str.push(get_bit(pixel[n], 0));
+        str.chars().collect::<Vec<char>>()
+    });
+
+    loop {
+        let byte: String = (1..9)
+            .map(|_n| iterator.next().unwrap())
+            .collect::<String>();
+        let byte_value = char::from_u32(bin_to_byte(&byte)).unwrap();
+        write!(file, "{}", byte_value).unwrap();
+        let end = iterator.next().unwrap();
+
+        if end == '0' {
+            break;
         }
     }
 
