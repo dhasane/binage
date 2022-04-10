@@ -1,7 +1,7 @@
-// use crate::color::{self, IntoColor};
 use std::env;
 use std::io;
 
+mod bin_util;
 mod steg;
 
 // esteganografia

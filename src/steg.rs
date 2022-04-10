@@ -4,21 +4,7 @@ use std::fs::File;
 use std::io::{self, prelude::*, BufReader};
 use std::str;
 
-/// bit goes into byte at it's position pos
-fn modify_byte(mut byte: u8, pos: u8, bit: char) -> u8 {
-    let base: u8 = 2;
-    let byte_mask: u8 = base.pow(pos as u32);
-    let change = get_bit(byte, pos as usize);
-    // println!("{:b}", byte_mask);
-    if change != bit {
-        byte ^= byte_mask; // Toggle bit
-    }
-    byte
-}
-
-fn get_bit(byte: u8, pos: usize) -> char {
-    format!("{:b}", byte).chars().rev().nth(pos).unwrap()
-}
+use crate::bin_util;
 
 #[allow(dead_code)]
 fn print_image_pixels(img_path: &str) -> io::Result<()> {
@@ -43,24 +29,14 @@ fn print_image_pixels(img_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-// convierte de u32 a una cadena de bits
-fn byte_to_bin(cad: u32) -> String {
-    // quitar los primeros 2 caracteres, que son 0b
-    let ret = format!("{:010b}", cad)[2..].to_string();
-    ret
-}
-
-// convierte una cadena de bits a u32
-fn bin_to_byte(cad: &str) -> u32 {
-    let mut val: u32 = 0;
-    let mut pos: u32 = 0;
-    for ch in cad.chars().rev() {
-        if ch == '1' {
-            val += 2_u32.pow(pos);
-        }
-        pos += 1;
-    }
-    val
+fn movement_iter(img_width: u32) -> impl Iterator<Item = (u32, u32, usize)> {
+    (0..)
+        .flat_map(move |n| {
+            let x: u32 = n / img_width;
+            let y: u32 = n % img_width;
+            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
+        })
+        .into_iter()
 }
 
 #[allow(dead_code)]
@@ -93,7 +69,7 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
                     std::process::exit(1);
                 }
             };
-            let mut ret = byte_to_bin(byte_value as u32);
+            let mut ret = bin_util::byte_to_bin(byte_value as u32);
             ret.push('1');
             // println!("{:?} -> {}", ret, byte_value);
             ret.chars().collect::<Vec<_>>()
@@ -102,13 +78,7 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
 
     let img_width = img.width();
 
-    let pos = (0..)
-        .flat_map(|n| {
-            let x: u32 = n / img_width;
-            let y: u32 = n % img_width;
-            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
-        })
-        .into_iter();
+    let pos = movement_iter(img_width);
 
     for (x, y, n) in pos {
         let temp = bits.next();
@@ -124,7 +94,7 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
         // println!("{:?}, end:{}", temp, end);
         // println!("{},{},{} => {}", x, y, n, bit);
         let mut pixel = img.get_pixel(x, y);
-        pixel[n] = modify_byte(pixel[n], 0, bit);
+        pixel[n] = bin_util::modify_byte(pixel[n], 0, bit);
         img.put_pixel(x, y, pixel); // maybe this could be more eficient, so as to not store it after every small change
 
         if end {
@@ -163,18 +133,12 @@ pub fn load(img_path: &str, file_path: &str) -> io::Result<()> {
 
     let img_width: u32 = img.width();
 
-    let pos = (0..)
-        .flat_map(|n| {
-            let x: u32 = n / img_width;
-            let y: u32 = n % img_width;
-            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
-        })
-        .into_iter();
+    let pos = movement_iter(img_width);
 
     let mut iterator = pos.flat_map(|(x, y, n)| {
         let pixel = img.get_pixel(x, y);
         let mut str: String = "".to_string();
-        str.push(get_bit(pixel[n], 0));
+        str.push(bin_util::get_bit(pixel[n], 0));
         str.chars().collect::<Vec<char>>()
     });
 
@@ -182,7 +146,7 @@ pub fn load(img_path: &str, file_path: &str) -> io::Result<()> {
         let byte: String = (1..9)
             .map(|_n| iterator.next().unwrap())
             .collect::<String>();
-        let byte_value = char::from_u32(bin_to_byte(&byte)).unwrap();
+        let byte_value = char::from_u32(bin_util::bin_to_byte(&byte)).unwrap();
         write!(file, "{}", byte_value).unwrap();
         let end = iterator.next().unwrap();
 
