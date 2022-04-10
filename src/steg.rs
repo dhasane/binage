@@ -28,12 +28,16 @@ fn print_image_pixels(img_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn movement_iter(img_width: u32, top: u8) -> impl Iterator<Item = (u32, u32, usize, usize)> {
+fn movement_iter(
+    img_width: u32,
+    img_height: u32,
+    top: u8,
+) -> impl Iterator<Item = (u32, u32, usize, usize)> {
     let max_v = std::cmp::min(8, top);
     let num = max_v * 3;
     (0..).flat_map(move |n| {
-        let x: u32 = n / img_width;
-        let y: u32 = n % img_width;
+        let x: u32 = n % img_width;
+        let y: u32 = (n / img_width) % img_height; // this may overwrite data
         (0..num).map(move |v| (x, y, (v / 3) as usize, (v % 3) as usize))
     })
 }
@@ -92,7 +96,7 @@ pub fn store(
         })
         .peekable();
 
-    let pos = movement_iter(img.width(), num_bits);
+    let pos = movement_iter(img.width(), img.height(), num_bits);
 
     for (x, y, m, n) in pos {
         let temp = bits.next();
@@ -138,7 +142,7 @@ pub fn load(img_path: &str, output_file: &str, num_bits: u8) -> io::Result<()> {
         }
     };
 
-    let pos = movement_iter(img.width(), num_bits);
+    let pos = movement_iter(img.width(), img.height(), num_bits);
 
     let mut iterator = pos.flat_map(|(x, y, m, n)| {
         let pixel = img.get_pixel(x, y);
