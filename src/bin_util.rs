@@ -1,9 +1,8 @@
 /// bit goes into byte at it's position pos
-pub fn modify_byte(mut byte: u8, pos: u8, bit: char) -> u8 {
+pub fn modify_byte(mut byte: u8, pos: usize, bit: char) -> u8 {
     let base: u8 = 2;
     let byte_mask: u8 = base.pow(pos as u32);
-    let change = get_bit(byte, pos as usize);
-    // println!("{:b}", byte_mask);
+    let change = get_bit(byte, pos);
     if change != bit {
         byte ^= byte_mask; // Toggle bit
     }
@@ -11,7 +10,7 @@ pub fn modify_byte(mut byte: u8, pos: u8, bit: char) -> u8 {
 }
 
 pub fn get_bit(byte: u8, pos: usize) -> char {
-    format!("{:b}", byte).chars().rev().nth(pos).unwrap()
+    format!("{:08b}", byte).chars().rev().nth(pos).unwrap()
 }
 
 // convierte de u32 a una cadena de bits

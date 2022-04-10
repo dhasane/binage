@@ -29,18 +29,23 @@ fn print_image_pixels(img_path: &str) -> io::Result<()> {
     Ok(())
 }
 
-fn movement_iter(img_width: u32) -> impl Iterator<Item = (u32, u32, usize)> {
-    (0..)
-        .flat_map(move |n| {
-            let x: u32 = n / img_width;
-            let y: u32 = n % img_width;
-            vec![(x, y, 1), (x, y, 2), (x, y, 3)]
-        })
-        .into_iter()
+fn movement_iter(img_width: u32, top: u8) -> impl Iterator<Item = (u32, u32, usize, usize)> {
+    let max_v = std::cmp::min(8, top + 1);
+    let num = max_v * 3;
+    (0..).flat_map(move |n| {
+        let x: u32 = n / img_width;
+        let y: u32 = n % img_width;
+        (0..num).map(move |v| (x, y, (v / 3) as usize, (v % 3) as usize))
+    })
 }
 
 #[allow(dead_code)]
-pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<String> {
+pub fn store(
+    img_path: &str,
+    file_path: &str,
+    output_file: &str,
+    num_bits: u8,
+) -> io::Result<String> {
     let mut img = DynamicImage::ImageRgba8(match image::open(img_path) {
         Ok(f) => f.into_rgba8(),
         Err(err) => {
@@ -71,16 +76,15 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
             };
             let mut ret = bin_util::byte_to_bin(byte_value as u32);
             ret.push('1');
-            // println!("{:?} -> {}", ret, byte_value);
             ret.chars().collect::<Vec<_>>()
         })
         .peekable();
 
     let img_width = img.width();
 
-    let pos = movement_iter(img_width);
+    let pos = movement_iter(img_width, num_bits);
 
-    for (x, y, n) in pos {
+    for (x, y, m, n) in pos {
         let temp = bits.next();
         let end = bits.peek().is_none();
         let bit = if end {
@@ -91,14 +95,11 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
                 None => '0',
             }
         };
-        // println!("{:?}, end:{}", temp, end);
-        // println!("{},{},{} => {}", x, y, n, bit);
         let mut pixel = img.get_pixel(x, y);
-        pixel[n] = bin_util::modify_byte(pixel[n], 0, bit);
+        pixel[n] = bin_util::modify_byte(pixel[n], m, bit);
         img.put_pixel(x, y, pixel); // maybe this could be more eficient, so as to not store it after every small change
 
         if end {
-            println!("saliendo");
             break;
         }
     }
@@ -115,9 +116,8 @@ pub fn store(img_path: &str, file_path: &str, output_file: &str) -> io::Result<S
 }
 
 #[allow(dead_code)]
-pub fn load(img_path: &str, file_path: &str) -> io::Result<()> {
-    println!("leyendo {}", img_path);
-    println!("creando {}", file_path);
+pub fn load(img_path: &str, file_path: &str, num_bits: u8) -> io::Result<()> {
+    println!("leyendo imagen {} > {}", img_path, file_path);
 
     let mut file: std::fs::File = File::create(file_path)?;
 
@@ -133,12 +133,12 @@ pub fn load(img_path: &str, file_path: &str) -> io::Result<()> {
 
     let img_width: u32 = img.width();
 
-    let pos = movement_iter(img_width);
+    let pos = movement_iter(img_width, num_bits);
 
-    let mut iterator = pos.flat_map(|(x, y, n)| {
+    let mut iterator = pos.flat_map(|(x, y, m, n)| {
         let pixel = img.get_pixel(x, y);
         let mut str: String = "".to_string();
-        str.push(bin_util::get_bit(pixel[n], 0));
+        str.push(bin_util::get_bit(pixel[n], m));
         str.chars().collect::<Vec<char>>()
     });
 
